@@ -24,6 +24,7 @@ from backend.db.ai_db import (
 )
 from backend.paper_trading.paper_db import get_paper_portfolio, get_paper_positions
 from backend.paper_trading.paper_engine import PaperTradingEngine
+from backend.security.audit import record_audit_event
 
 
 def _now() -> str:
@@ -458,6 +459,10 @@ class AIDecisionEngine:
                 db_path=self.db_path,
             )
             insert_ai_audit_log(decision_id, 'paper_execution', True, f'Paper order {order_id} executed via {initiated_by}.', self.db_path)
+            record_audit_event(
+                'trade_execution', 'paper_order_executed', 'ai_decision', decision_id,
+                details={'execution_mode': decision['execution_mode'], 'paper_only': True}, db_path=self.db_path,
+            )
         else:
             reason = execution.get('reason', 'Paper engine rejected the decision')
             update_ai_decision_execution(
@@ -469,6 +474,10 @@ class AIDecisionEngine:
                 db_path=self.db_path,
             )
             insert_ai_audit_log(decision_id, 'paper_execution', False, reason, self.db_path)
+            record_audit_event(
+                'trade_execution', 'paper_execution_rejected', 'ai_decision', decision_id,
+                details={'execution_mode': decision['execution_mode'], 'paper_only': True}, db_path=self.db_path,
+            )
         return get_ai_decision(decision_id, self.db_path) or decision
 
     def reject_saved_decision(self, decision_id: str, reason: str = 'Rejected by user') -> Dict[str, Any]:
@@ -486,6 +495,7 @@ class AIDecisionEngine:
             db_path=self.db_path,
         )
         insert_ai_audit_log(decision_id, 'manual_review', True, reason, self.db_path)
+        record_audit_event('decision_approval', 'decision_rejected', 'ai_decision', decision_id, db_path=self.db_path)
         return get_ai_decision(decision_id, self.db_path) or decision
 
 

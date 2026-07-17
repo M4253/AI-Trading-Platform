@@ -1,5 +1,7 @@
 import sqlite3
 import threading
+import os
+from pathlib import Path
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -50,10 +52,19 @@ CREATE_TABLES_SQL = [
 def get_conn(db_path: Optional[str] = None):
     if not db_path:
         db_path = DEFAULT_DB
+    # A fresh clone must be able to initialise its local paper database without
+    # depending on a generated SQLite file committed to source control.
+    database_path = Path(db_path)
+    if str(database_path.parent) not in ('', '.'):
+        database_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     # enforce foreign keys if needed
     conn.execute('PRAGMA foreign_keys = ON')
+    try:
+        os.chmod(db_path, 0o600)
+    except OSError:
+        pass
     return conn
 
 

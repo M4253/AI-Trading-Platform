@@ -3,6 +3,7 @@
 import React, { ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { clearSession } from '@/lib/api'
 
 interface LayoutProps {
   children: ReactNode
@@ -14,8 +15,7 @@ export default function Layout({ children, user, onRefresh }: LayoutProps) {
   const router = useRouter()
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    clearSession()
     router.push('/login')
   }
 

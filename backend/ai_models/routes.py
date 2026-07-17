@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.ai_models.ai_decision_engine import AIDecisionEngine, available_models
 from backend.db.ai_db import (
@@ -15,6 +15,7 @@ from backend.db.ai_db import (
     update_ai_execution_settings,
 )
 from backend.paper_trading.paper_db import get_paper_portfolio, get_paper_positions
+from backend.security.audit import record_audit_event
 
 
 router = APIRouter(prefix='/ai', tags=['ai-decision-engine'])
@@ -28,8 +29,7 @@ _SENSITIVE_CONTEXT_KEYS = {
 class _StrictModel(BaseModel):
     """Do not silently accept credential or broker fields in AI API payloads."""
 
-    class Config:
-        extra = 'forbid'
+    model_config = ConfigDict(extra='forbid')
 
 
 class AIContextRequest(_StrictModel):
@@ -135,16 +135,22 @@ def get_settings() -> Dict[str, Any]:
 
 
 @router.patch('/settings')
-def update_settings(request: AISettingsUpdateRequest) -> Dict[str, Any]:
+def update_settings(request: AISettingsUpdateRequest, http_request: Request) -> Dict[str, Any]:
     if request.model_key and request.model_key not in {model['key'] for model in available_models()}:
         raise HTTPException(status_code=422, detail='Selected AI model is not registered')
     try:
-        return update_ai_execution_settings(
+        updated = update_ai_execution_settings(
             execution_mode=request.execution_mode,
             model_key=request.model_key,
         )
+        record_audit_event(
+            'settings_change', 'ai_execution_settings_updated', 'ai_execution_settings',
+            request=http_request,
+            details={'execution_mode': updated['execution_mode'], 'model_key': updated['model_key']},
+        )
+        return updated
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail='AI execution settings are invalid') from error
 
 
 @router.get('/models')
@@ -168,28 +174,40 @@ def create_decision(request: AIContextRequest) -> Dict[str, Any]:
             decision_type='trade',
         )
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail='AI decision context is invalid') from error
 
 
 @router.post('/decisions/{decision_id}/approve')
-def approve_decision(decision_id: str) -> Dict[str, Any]:
+def approve_decision(decision_id: str, request: Request) -> Dict[str, Any]:
     """Manually approve one persisted decision for guarded paper execution."""
     try:
-        return _decision_engine.execute_saved_decision(decision_id, initiated_by='manual_approval')
+        decision = _decision_engine.execute_saved_decision(decision_id, initiated_by='manual_approval')
+        record_audit_event(
+            'decision_approval',
+            'paper_execution_approved' if decision['execution_status'] == 'paper_executed' else 'paper_execution_rejected',
+            'ai_decision', decision_id, request=request,
+            details={'execution_status': decision['execution_status'], 'paper_only': True},
+        )
+        return decision
     except KeyError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=404, detail='AI decision not found') from error
     except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        raise HTTPException(status_code=409, detail='AI decision cannot be approved in its current state') from error
 
 
 @router.post('/decisions/{decision_id}/reject')
-def reject_decision(decision_id: str, request: DecisionRejectionRequest) -> Dict[str, Any]:
+def reject_decision(decision_id: str, request: DecisionRejectionRequest, http_request: Request) -> Dict[str, Any]:
     try:
-        return _decision_engine.reject_saved_decision(decision_id, request.reason)
+        decision = _decision_engine.reject_saved_decision(decision_id, request.reason)
+        record_audit_event(
+            'decision_approval', 'decision_rejected', 'ai_decision', decision_id,
+            request=http_request, details={'execution_status': decision['execution_status']},
+        )
+        return decision
     except KeyError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=404, detail='AI decision not found') from error
     except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        raise HTTPException(status_code=409, detail='AI decision cannot be rejected in its current state') from error
 
 
 @router.post('/analyze')
@@ -214,7 +232,7 @@ def analyze_opportunity(request: AIContextRequest) -> Dict[str, Any]:
             'paper_only': True,
         }
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail='AI analysis context is invalid') from error
 
 
 @router.post('/propose-trade')
@@ -238,13 +256,13 @@ def propose_trade(request: AITradeProposalRequest) -> Dict[str, Any]:
             'execution_mode': settings['execution_mode'],
         }
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail='AI trade proposal context is invalid') from error
 
 
 @router.post('/execute-proposal')
-def execute_proposal(request: LegacyExecutionRequest) -> Dict[str, Any]:
+def execute_proposal(request: LegacyExecutionRequest, http_request: Request) -> Dict[str, Any]:
     """Legacy alias that now requires a saved decision id, never a raw order."""
-    return approve_decision(request.decision_id)
+    return approve_decision(request.decision_id, http_request)
 
 
 @router.get('/decisions')

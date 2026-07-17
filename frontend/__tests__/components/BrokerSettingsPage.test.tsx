@@ -15,6 +15,7 @@ jest.mock('@/lib/api', () => ({
     put: jest.fn(),
     delete: jest.fn(),
   },
+  getSessionValue: jest.fn(() => null),
 }))
 
 const mockedApi = API as jest.Mocked<typeof API>

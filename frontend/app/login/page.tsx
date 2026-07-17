@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import API from '@/lib/api'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -14,16 +15,12 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // Deliberately limited local demo access; this is not production authentication.
-      if (email === 'demo@example.com' && password === 'demo') {
-        localStorage.setItem('token', 'demo-token-' + Date.now())
-        localStorage.setItem('user', email)
-        window.location.href = '/dashboard'
-      } else {
-        setError('Use the displayed demo credentials')
-      }
-    } catch (err) {
-      setError('Login failed. Please try again.')
+      const response = await API.post('/auth/demo-login', { email, password })
+      sessionStorage.setItem('token', response.data.access_token)
+      sessionStorage.setItem('user', response.data.user)
+      window.location.assign('/dashboard')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Login failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -34,7 +31,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">AI Trading Platform</h1>
-          <p className="text-gray-600">Paper Trading Dashboard — Local Demo Access</p>
+          <p className="text-gray-600">Paper Trading Dashboard — Development-only local access</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -82,9 +79,10 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700">
-          <p className="font-semibold mb-2">Demo Credentials:</p>
+          <p className="font-semibold mb-2">Local development demo only:</p>
           <p>Email: <code className="bg-gray-100 px-2 py-1 rounded">demo@example.com</code></p>
           <p>Password: <code className="bg-gray-100 px-2 py-1 rounded">demo</code></p>
+          <p className="mt-2">This server-issued session is disabled when the backend runs in production mode.</p>
         </div>
       </div>
     </div>

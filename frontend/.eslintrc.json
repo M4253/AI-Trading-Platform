@@ -1,0 +1,18 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "env": {
+    "jest": true
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "react/no-unescaped-entities": "off"
+  },
+  "overrides": [
+    {
+      "files": ["__tests__/**/*"],
+      "rules": {
+        "react/display-name": "off"
+      }
+    }
+  ]
+}

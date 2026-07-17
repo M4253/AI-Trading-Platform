@@ -2,7 +2,7 @@
 
 import React, { FormEvent, useEffect, useState } from 'react'
 import Layout from '@/components/Layout'
-import API from '@/lib/api'
+import API, { getSessionValue } from '@/lib/api'
 
 type BrokerMode = 'paper' | 'live'
 type BrokerStatus = 'disconnected' | 'paper_ready' | 'live_locked'
@@ -64,7 +64,7 @@ export default function BrokerSettingsPage() {
   const [user, setUser] = useState<string | null>(null)
 
   useEffect(() => {
-    setUser(localStorage.getItem('user'))
+    setUser(getSessionValue('user'))
     void loadConfigurations()
   }, [])
 

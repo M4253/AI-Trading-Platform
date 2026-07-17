@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 from datetime import datetime
 from backend.backtesting.backtester import Backtester, BacktestConfig
 from backend.backtesting.data_provider import CSVDataProvider
 from backend.db.db import get_conn
+from backend.security.audit import record_audit_event
 
 router = APIRouter(prefix='/backtest', tags=['backtest'])
 
@@ -23,7 +24,7 @@ class BacktestRequest(BaseModel):
 
 
 @router.post('/start')
-def start_backtest(req: BacktestRequest):
+def start_backtest(req: BacktestRequest, request: Request):
     """Start a new backtest run."""
     try:
         data_provider = CSVDataProvider()
@@ -50,9 +51,10 @@ def start_backtest(req: BacktestRequest):
             return signals
         
         results = backtester.run(dummy_strategy)
+        record_audit_event('backtest', 'backtest_completed', 'backtest', backtester.backtest_id, request=request)
         return {'backtest_id': backtester.backtest_id, 'results': results}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail='Backtest could not be completed') from e
 
 
 @router.get('/results/{backtest_id}')
@@ -75,4 +77,3 @@ def list_backtests():
     cur.execute('SELECT id, strategy_name, strategy_version, start_date, end_date, status FROM backtest_runs ORDER BY created_at DESC LIMIT 50')
     rows = cur.fetchall()
     return [dict(r) for r in rows]
-

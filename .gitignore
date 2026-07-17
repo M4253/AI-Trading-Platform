@@ -2,6 +2,14 @@ __pycache__/
 backend/data/broker_settings.db
 backend/data/broker_settings.db-shm
 backend/data/broker_settings.db-wal
+backend/data/trading.db
+backend/data/trading.db-shm
+backend/data/trading.db-wal
 *.pyc
 .pytest_cache/
 .env
+.env.*
+!.env.example
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+frontend/.env.local

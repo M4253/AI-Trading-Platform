@@ -7,6 +7,7 @@ from backend.paper_trading.paper_db import (
     insert_risk_event, update_paper_portfolio
 )
 from backend.risk_engine.risk_manager import RiskManager
+from backend.security.logging import app_logger
 import uuid
 
 
@@ -110,9 +111,13 @@ class PaperTradingEngine:
                 'correlation_id': correlation_id
             }
         except Exception as e:
+            app_logger().error(
+                'paper_execution_failed',
+                extra={'event': 'paper_execution_failed', 'exception_type': type(e).__name__},
+            )
             return {
                 'rejected': True,
-                'reason': f'Execution error: {str(e)}',
+                'reason': 'Paper execution failed safely',
                 'correlation_id': correlation_id
             }
 

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import axios from 'axios'
 import Layout from '@/components/Layout'
 import PortfolioCard from '@/components/PortfolioCard'
 import EquityCurve from '@/components/EquityCurve'
@@ -14,8 +13,7 @@ import AIDecisionsTable from '@/components/AIDecisionsTable'
 import AIExecutionSettings from '@/components/AIExecutionSettings'
 import MarketIntelligencePanel from '@/components/MarketIntelligencePanel'
 import TradingControls from '@/components/TradingControls'
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+import API, { getSessionValue } from '@/lib/api'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -30,23 +28,23 @@ export default function DashboardPage() {
   const [updatingDecisionId, setUpdatingDecisionId] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    const token = getSessionValue('token')
     if (!token) {
       router.push('/login')
       return
     }
-    setUser(localStorage.getItem('user'))
+    setUser(getSessionValue('user'))
     loadData()
-  }, [])
+  }, [router])
 
   const loadData = async () => {
     try {
       setLoading(true)
       const [portfolioRes, positionsRes, ordersRes, aiRes] = await Promise.all([
-        axios.get(`${BACKEND_URL}/portfolio`),
-        axios.get(`${BACKEND_URL}/paper/positions`),
-        axios.get(`${BACKEND_URL}/paper/orders`),
-        axios.get(`${BACKEND_URL}/ai/decisions?limit=10`),
+        API.get('/portfolio'),
+        API.get('/paper/positions'),
+        API.get('/paper/orders'),
+        API.get('/ai/decisions?limit=10'),
       ])
 
       setPortfolio(portfolioRes.data)
@@ -69,7 +67,7 @@ export default function DashboardPage() {
 
   const handleStartTrading = async () => {
     try {
-      await axios.post(`${BACKEND_URL}/paper/start`)
+      await API.post('/paper/start')
       setTradingStatus('running')
       handleRefresh()
     } catch (err) {
@@ -79,7 +77,7 @@ export default function DashboardPage() {
 
   const handlePauseTrading = async () => {
     try {
-      await axios.post(`${BACKEND_URL}/paper/pause`)
+      await API.post('/paper/pause')
       setTradingStatus('paused')
       handleRefresh()
     } catch (err) {
@@ -93,7 +91,7 @@ export default function DashboardPage() {
     )
     if (confirmed) {
       try {
-        await axios.post(`${BACKEND_URL}/paper/stop-all`)
+        await API.post('/paper/stop-all')
         setTradingStatus('stopped')
         handleRefresh()
       } catch (err) {
@@ -106,7 +104,7 @@ export default function DashboardPage() {
     try {
       setUpdatingDecisionId(decisionId)
       setError('')
-      await axios.post(`${BACKEND_URL}/ai/decisions/${decisionId}/approve`)
+      await API.post(`/ai/decisions/${decisionId}/approve`)
       await loadData()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Unable to approve the paper decision')
@@ -120,7 +118,7 @@ export default function DashboardPage() {
     try {
       setUpdatingDecisionId(decisionId)
       setError('')
-      await axios.post(`${BACKEND_URL}/ai/decisions/${decisionId}/reject`, { reason: 'Rejected from dashboard' })
+      await API.post(`/ai/decisions/${decisionId}/reject`, { reason: 'Rejected from dashboard' })
       await loadData()
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Unable to reject the AI decision')
