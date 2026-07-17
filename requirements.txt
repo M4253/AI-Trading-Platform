@@ -2,3 +2,5 @@ fastapi>=0.95
 uvicorn>=0.21
 pytest>=7.0
 httpx>=0.28.1
+ib_insync>=0.9.69
+python-dotenv>=0.21.0
