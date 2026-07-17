@@ -1,5 +1,3 @@
-import os
-import types
 import pytest
 from backend.broker import broker_service
 
@@ -15,51 +13,18 @@ def test_simulated_broker_submit_and_cancel(tmp_path, monkeypatch):
     assert not svc.cancel_order(order_id)
 
 
-class DummyIB:
-    def __init__(self):
-        self._connected = False
-        self._placed = []
+def test_ibkr_broker_stays_disconnected_and_rejects_execution(tmp_path):
+    """No test may turn a local mock into a simulated live-broker approval."""
+    from backend.broker.ibkr_broker import IBKRBroker
 
-    def connect(self, host, port, clientId, timeout=None):
-        self._connected = True
+    broker = IBKRBroker(
+        db_path=str(tmp_path / 'ib.db'),
+        paper=False,
+        host='127.0.0.1',
+        port=7496,
+    )
 
-    def disconnect(self):
-        self._connected = False
-
-    def placeOrder(self, contract, order):
-        # create a dummy object with orderStatus
-        class OS:
-            def __init__(self):
-                self.status = 'Filled'
-                self.avgFillPrice = getattr(order, 'lmtPrice', None) or 123.45
-        class T:
-            def __init__(self):
-                self.orderStatus = OS()
-        return T()
-
-    def positions(self):
-        return []
-
-    def accountSummary(self):
-        return []
-
-    def sleep(self, sec):
-        import time
-        time.sleep(0)
-
-
-def test_ibkr_broker_live_flow(monkeypatch, tmp_path):
-    # Force settings to think live trading but monkeypatch IB to DummyIB
-    monkeypatch.setattr('backend.config.settings.settings.LIVE_TRADING', True)
-    # monkeypatch ib_insync.IB used by IBKRBroker
-    dummy_module = types.SimpleNamespace(IB=lambda: DummyIB(), Stock=lambda s, e, c: None, MarketOrder=lambda side, qty: types.SimpleNamespace(), LimitOrder=lambda side, qty, price: types.SimpleNamespace(lmtPrice=price))
-    monkeypatch.setitem(__import__('sys').modules, 'ib_insync', dummy_module)
-    # reload the IBKRBroker module to pick up the mocked ib_insync
-    from importlib import reload
-    import backend.broker.ibkr_broker as ibmod
-    reload(ibmod)
-    broker = ibmod.IBKRBroker(db_path=str(tmp_path / 'ib.db'), paper=False)
-    res = broker.submit_order('MOCK', 1, 'buy', order_type='limit', price=123.45)
-    assert 'order' in res
-    assert res.get('trade') is not None
-
+    assert broker.paper is True
+    assert broker.connect() is False
+    with pytest.raises(RuntimeError, match='IBKR order execution is disabled'):
+        broker.submit_order('MOCK', 1, 'buy', order_type='limit', price=123.45)
