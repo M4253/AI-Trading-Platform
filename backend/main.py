@@ -3,13 +3,10 @@ from pydantic import BaseModel
 from backend.trading_engine.execution_engine import execute_trade_request
 from backend.portfolio.portfolio import get_portfolio_view
 from backend.db.db import list_orders, cancel_order
+from backend.backtesting.routes import router as backtest_router
 
 app = FastAPI()
-
-
-@app.get('/health')
-def health():
-    return {"status": "ok"}
+app.include_router(backtest_router)
 
 
 class TradeRequest(BaseModel):
@@ -22,6 +19,11 @@ class TradeRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     order_id: str
+
+
+@app.get('/health')
+def health():
+    return {"status": "ok"}
 
 
 @app.post('/trade/execute')
