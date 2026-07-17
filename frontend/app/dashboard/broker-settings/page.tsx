@@ -1,177 +1,306 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { FormEvent, useEffect, useState } from 'react'
 import Layout from '@/components/Layout'
+import API from '@/lib/api'
+
+type BrokerMode = 'paper' | 'live'
+type BrokerStatus = 'disconnected' | 'paper_ready' | 'live_locked'
+
+interface BrokerConfiguration {
+  id: string
+  name: string
+  broker: 'interactive_brokers'
+  mode: BrokerMode
+  host: string
+  port: number
+  client_id: number
+  profile_label: string
+  status: BrokerStatus
+  last_mock_tested_at: string | null
+}
+
+interface BrokerDraft {
+  name: string
+  mode: BrokerMode
+  host: string
+  port: string
+  clientId: string
+  profileLabel: string
+}
+
+const emptyDraft = (): BrokerDraft => ({
+  name: 'Interactive Brokers Paper',
+  mode: 'paper',
+  host: '127.0.0.1',
+  port: '7497',
+  clientId: '1',
+  profileLabel: '',
+})
+
+const statusDetails: Record<BrokerStatus, { label: string; className: string }> = {
+  disconnected: {
+    label: 'Disconnected',
+    className: 'bg-gray-100 text-gray-800 border-gray-300',
+  },
+  paper_ready: {
+    label: 'Paper Ready',
+    className: 'bg-green-100 text-green-800 border-green-300',
+  },
+  live_locked: {
+    label: 'Live Locked',
+    className: 'bg-red-100 text-red-800 border-red-300',
+  },
+}
 
 export default function BrokerSettingsPage() {
-  const [host, setHost] = useState('127.0.0.1')
-  const [port, setPort] = useState('7497')
-  const [clientId, setClientId] = useState('1')
-  const [accountId, setAccountId] = useState('')
+  const [configurations, setConfigurations] = useState<BrokerConfiguration[]>([])
+  const [draft, setDraft] = useState<BrokerDraft>(emptyDraft)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
   const [user, setUser] = useState<string | null>(null)
 
   useEffect(() => {
     setUser(localStorage.getItem('user'))
+    void loadConfigurations()
   }, [])
 
-  const handleTestConnection = async () => {
-    setMessage('Connection testing is disabled. No request was sent to IBKR.')
+  async function loadConfigurations() {
+    try {
+      setLoading(true)
+      const response = await API.get('/broker-configurations')
+      setConfigurations(response.data.configurations || [])
+      setError('')
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.detail || 'Unable to load broker configurations')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleSave = () => {
-    setMessage('⚠️ Settings are display-only while broker integration is disabled. Nothing was saved or sent.')
+  function updateDraft<K extends keyof BrokerDraft>(field: K, value: BrokerDraft[K]) {
+    setDraft((current) => ({ ...current, [field]: value }))
   }
 
-  const handleDisconnect = () => {
-    setMessage('ℹ️ Not connected - No active IBKR connection')
+  function resetForm() {
+    setDraft(emptyDraft())
+    setEditingId(null)
   }
+
+  async function saveConfiguration(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setMessage('')
+    setError('')
+
+    const payload = {
+      name: draft.name,
+      broker: 'interactive_brokers' as const,
+      mode: draft.mode,
+      host: draft.host,
+      port: Number(draft.port),
+      client_id: Number(draft.clientId),
+      profile_label: draft.profileLabel,
+    }
+
+    try {
+      if (editingId) {
+        await API.put(`/broker-configurations/${editingId}`, payload)
+        setMessage('Broker configuration saved. It remains disconnected.')
+      } else {
+        await API.post('/broker-configurations', payload)
+        setMessage('Broker configuration added. It remains disconnected.')
+      }
+      resetForm()
+      await loadConfigurations()
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.detail || 'Unable to save broker configuration')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function editConfiguration(configuration: BrokerConfiguration) {
+    setDraft({
+      name: configuration.name,
+      mode: configuration.mode,
+      host: configuration.host,
+      port: String(configuration.port),
+      clientId: String(configuration.client_id),
+      profileLabel: configuration.profile_label || '',
+    })
+    setEditingId(configuration.id)
+    setMessage('')
+    setError('')
+  }
+
+  async function removeConfiguration(configId: string) {
+    if (!window.confirm('Remove this local broker configuration?')) return
+
+    try {
+      await API.delete(`/broker-configurations/${configId}`)
+      if (editingId === configId) resetForm()
+      setMessage('Broker configuration removed.')
+      await loadConfigurations()
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.detail || 'Unable to remove broker configuration')
+    }
+  }
+
+  async function runMockTest(configId: string) {
+    try {
+      setMessage('')
+      const response = await API.post(`/broker-configurations/${configId}/test`)
+      setMessage(response.data.message)
+      await loadConfigurations()
+    } catch (requestError: any) {
+      setError(requestError.response?.data?.detail || 'Unable to run mock connection test')
+    }
+  }
+
+  const hasPaperReadyConfiguration = configurations.some(
+    (configuration) => configuration.status === 'paper_ready',
+  )
 
   return (
     <Layout user={user}>
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Broker Settings</h1>
-          <p className="text-gray-600 mb-6">Configure your Interactive Brokers connection</p>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="rounded-lg bg-white p-6 shadow">
+          <h1 className="text-2xl font-bold text-gray-900">Broker Settings</h1>
+          <p className="mt-2 text-gray-600">Manage local Interactive Brokers profiles for future paper-trading use.</p>
 
-          {/* Connection Status */}
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="font-semibold text-yellow-900">Connection Status: <span className="text-red-600">Not Connected</span></p>
-            <p className="text-sm text-yellow-800 mt-1">IBKR is not currently connected to this platform. Paper trading proceeds without a real connection.</p>
+          <div className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Broker safety status">
+            <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-600">Broker Connection</p>
+              <p className="mt-1 text-lg font-bold text-gray-900">Disconnected</p>
+              <p className="mt-1 text-xs text-gray-600">No network broker connection is available.</p>
+            </div>
+            <div className="rounded-lg border border-green-300 bg-green-50 p-4">
+              <p className="text-sm font-medium text-green-700">Paper Ready</p>
+              <p className="mt-1 text-lg font-bold text-green-900">{hasPaperReadyConfiguration ? 'Ready' : 'Not Tested'}</p>
+              <p className="mt-1 text-xs text-green-800">Mock checks validate saved paper metadata only.</p>
+            </div>
+            <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+              <p className="text-sm font-medium text-red-700">Live Trading</p>
+              <p className="mt-1 text-lg font-bold text-red-900">Live Locked</p>
+              <p className="mt-1 text-xs text-red-800">Real IBKR verification has not been performed.</p>
+            </div>
           </div>
 
-          {/* Important Notice */}
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="font-semibold text-blue-900 mb-2">⚠️ Important Security Notice</p>
-            <ul className="text-sm text-blue-800 space-y-1 ml-4 list-disc">
-              <li>No broker credentials are requested, stored, or sent by this page</li>
-              <li>Live trading is disabled; real IBKR verification has not occurred</li>
-              <li>Paper trading is the default and only active mode</li>
-              <li>IBKR remains disconnected regardless of the values shown below</li>
-            </ul>
+          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+            <p className="font-semibold">Credential-safe local storage</p>
+            <p className="mt-1">Only non-secret connection metadata is saved locally. This page never asks for passwords, API keys, or account numbers, and mock testing never contacts IBKR.</p>
+          </div>
+        </section>
+
+        <section className="rounded-lg bg-white p-6 shadow">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{editingId ? 'Edit Broker Configuration' : 'Add Broker Configuration'}</h2>
+              <p className="mt-1 text-sm text-gray-600">Interactive Brokers is available as a saved, disconnected profile.</p>
+            </div>
+            {editingId && (
+              <button type="button" onClick={resetForm} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Cancel Edit
+              </button>
+            )}
           </div>
 
-          <form className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Host
-                </label>
-                <input
-                  type="text"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="127.0.0.1"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 127.0.0.1 (localhost)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Port
-                </label>
-                <input
-                  type="text"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="7497"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default paper port: 7497</p>
-              </div>
+          <form onSubmit={saveConfiguration} className="mt-6 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Configuration Name
+                <input value={draft.name} onChange={(event) => updateDraft('name', event.target.value)} required maxLength={80} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="Interactive Brokers Paper" />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Broker
+                <input value="Interactive Brokers" disabled className="mt-1 w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-gray-600" />
+              </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Client ID
-                </label>
-                <input
-                  type="text"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="1"
-                />
-                <p className="text-xs text-gray-500 mt-1">Unique identifier for your API connection</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Account ID
-                </label>
-                <input
-                  type="text"
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="e.g., DU123456"
-                />
-                <p className="text-xs text-gray-500 mt-1">Your Interactive Brokers account ID</p>
-              </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Host
+                <input value={draft.host} onChange={(event) => updateDraft('host', event.target.value)} required maxLength={255} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="127.0.0.1" />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Paper Port
+                <input type="number" min="1" max="65535" value={draft.port} onChange={(event) => updateDraft('port', event.target.value)} required className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Client ID
+                <input type="number" min="1" max="2147483647" value={draft.clientId} onChange={(event) => updateDraft('clientId', event.target.value)} required className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
             </div>
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <p className="font-medium text-blue-900">Account Type: Paper Trading Only</p>
-              <p className="mt-1 text-xs text-blue-800">Live account selection is intentionally unavailable.</p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Local Profile Label <span className="font-normal text-gray-500">(optional)</span>
+                <input value={draft.profileLabel} onChange={(event) => updateDraft('profileLabel', event.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" placeholder="My paper workspace" />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Trading Mode
+                <select value={draft.mode} onChange={(event) => updateDraft('mode', event.target.value as BrokerMode)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+                  <option value="paper">Paper Trading (Default)</option>
+                  <option value="live">Live Trading (Locked)</option>
+                </select>
+                <span className="mt-1 block text-xs text-red-600">A live profile is saved as locked and cannot connect or place orders.</span>
+              </label>
             </div>
 
-            <div className="border-t pt-4 mt-4">
-              <p className="text-sm text-gray-600 mb-3 font-semibold">Connection Settings Information</p>
-              <ul className="text-sm text-gray-600 space-y-1 ml-4 list-disc">
-                <li><strong>Host:</strong> IP address where TWS or IB Gateway is running</li>
-                <li><strong>Port 7497:</strong> Common IBKR paper port; this application will not connect to it</li>
-                <li><strong>Client ID:</strong> Unique ID for this application (1-2147483647)</li>
-                <li><strong>Account ID:</strong> Found in TWS Account window, e.g., DU1234567 or U1234567</li>
-              </ul>
-            </div>
+            <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-400">
+              {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Configuration'}
+            </button>
           </form>
+        </section>
 
-          {/* Status Message */}
-          {message && (
-            <div className={`mt-6 p-4 rounded-lg ${
-              message.includes('❌') 
-                ? 'bg-red-50 text-red-700 border border-red-200'
-                : message.includes('✓')
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-blue-50 text-blue-700 border border-blue-200'
-            }`}>
-              {message}
+        <section className="rounded-lg bg-white p-6 shadow">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Saved Configurations</h2>
+              <p className="mt-1 text-sm text-gray-600">Every configuration remains disconnected until a future, separately verified phase.</p>
+            </div>
+            <button type="button" onClick={() => void loadConfigurations()} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Refresh</button>
+          </div>
+
+          {loading ? (
+            <p className="py-8 text-center text-gray-500">Loading broker configurations…</p>
+          ) : configurations.length === 0 ? (
+            <p className="py-8 text-center text-gray-500">No broker configurations saved yet.</p>
+          ) : (
+            <div className="mt-5 space-y-3">
+              {configurations.map((configuration) => {
+                const status = statusDetails[configuration.status]
+                return (
+                  <article key={configuration.id} className="rounded-lg border border-gray-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-gray-900">{configuration.name}</h3>
+                          <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">Interactive Brokers · {configuration.mode === 'paper' ? 'Paper' : 'Live (Locked)'} · {configuration.host}:{configuration.port} · Client {configuration.client_id}</p>
+                        {configuration.profile_label && <p className="mt-1 text-sm text-gray-500">Local label: {configuration.profile_label}</p>}
+                        {configuration.last_mock_tested_at && <p className="mt-1 text-xs text-gray-500">Last mock test: {new Date(configuration.last_mock_tested_at).toLocaleString()}</p>}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void runMockTest(configuration.id)} className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700">Run Mock Test</button>
+                        <button type="button" onClick={() => editConfiguration(configuration)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Edit</button>
+                        <button type="button" onClick={() => void removeConfiguration(configuration.id)} className="rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Remove</button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           )}
+        </section>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3 mt-6">
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
-            >
-              Test Connection
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
-            >
-              Save Settings
-            </button>
-            <button
-              type="button"
-              onClick={handleDisconnect}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition"
-            >
-              Disconnect
-            </button>
-          </div>
-
-          {/* Footer Note */}
-          <div className="mt-8 pt-6 border-t text-xs text-gray-500">
-            <p><strong>Security:</strong> This page does not send real credentials or initiate a broker connection.</p>
-            <p className="mt-2"><strong>Live Trading:</strong> Disabled. No real IBKR verification has been performed.</p>
-          </div>
-        </div>
+        {message && <div role="status" className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">{message}</div>}
+        {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       </div>
     </Layout>
   )

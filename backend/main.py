@@ -7,6 +7,7 @@ from backend.portfolio.portfolio import get_portfolio_view
 from backend.paper_trading.paper_db import get_paper_orders, cancel_paper_order
 from backend.backtesting.routes import router as backtest_router
 from backend.ai_models.routes import router as ai_router
+from backend.broker.settings_routes import router as broker_settings_router
 from backend.paper_trading.routes import router as paper_router
 
 app = FastAPI(
@@ -36,6 +37,7 @@ app.add_middleware(
 # Include routers
 app.include_router(backtest_router)
 app.include_router(ai_router)
+app.include_router(broker_settings_router)
 app.include_router(paper_router)
 
 

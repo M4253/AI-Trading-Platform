@@ -1,4 +1,7 @@
 __pycache__/
+backend/data/broker_settings.db
+backend/data/broker_settings.db-shm
+backend/data/broker_settings.db-wal
 *.pyc
 .pytest_cache/
 .env

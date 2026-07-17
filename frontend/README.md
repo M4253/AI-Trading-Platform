@@ -12,7 +12,8 @@ Next.js web dashboard for the AI Trading Platform paper trading engine.
 - 🤖 AI trading decisions with confidence, opportunity, and risk scores
 - ⚠️ Risk monitoring dashboard with guardrail status
 - 🎮 Trading controls (start, pause, stop all trading)
-- ⚙️ Broker settings page (disconnected, no real credentials)
+- ⚙️ Broker settings: add, edit, remove, and locally save disconnected IBKR configurations
+- 🧪 Deterministic mock-only broker configuration tests (no network connection)
 - 🛑 Always-visible STOP ALL TRADING control
 - 📱 Responsive design for desktop, tablet, and mobile
 
@@ -38,7 +39,7 @@ npm run dev
 - `/` - Redirects to login
 - `/login` - Secure login page
 - `/dashboard` - Main portfolio dashboard
-- `/dashboard/broker-settings` - Broker settings (disconnected)
+- `/dashboard/broker-settings` - Broker settings and local mock validation
 
 ## Components
 
@@ -73,9 +74,10 @@ The frontend connects to the backend API:
 
 ## Security Notes
 
-- No real IBKR credentials are stored or displayed
-- Live trading remains disabled at the frontend level
-- Broker settings UI shows connection status as "Not Connected"
+- No real IBKR credentials are requested, stored, or displayed
+- Broker metadata is stored locally with restricted file permissions where supported
+- Live trading remains disabled in the frontend and backend
+- Broker settings display Disconnected, Paper Ready, and Live Locked states
 - All sensitive operations require user confirmation
 - Demo login is for testing only
 
