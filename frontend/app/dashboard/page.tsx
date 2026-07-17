@@ -12,6 +12,7 @@ import OrdersTable from '@/components/OrdersTable'
 import RiskDashboard from '@/components/RiskDashboard'
 import AIDecisionsTable from '@/components/AIDecisionsTable'
 import AIExecutionSettings from '@/components/AIExecutionSettings'
+import MarketIntelligencePanel from '@/components/MarketIntelligencePanel'
 import TradingControls from '@/components/TradingControls'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -140,6 +141,8 @@ export default function DashboardPage() {
         />
 
         <AIExecutionSettings onChanged={handleRefresh} />
+
+        <MarketIntelligencePanel onDecisionCreated={handleRefresh} />
 
         {/* Error Alert */}
         {error && (

@@ -12,6 +12,8 @@ Next.js web dashboard for the AI Trading Platform paper trading engine.
 - 🤖 Auditable AI decisions that analyze supplied charts, indicators, news, market data, and paper portfolio state
 - 🧠 AI reasoning, confidence, execution outcome, and manual paper-approval controls in the dashboard
 - 🧪 Selectable local AI model policy with manual approval by default and automatic paper execution as the only automatic option
+- 🌐 Market Intelligence: modular no-key market/news/economic providers with cache-aware fallbacks
+- 🔎 Local watchlists, symbol management, market scanner, market health, and AI-ready market context
 - ⚠️ Risk monitoring dashboard with guardrail status
 - 🎮 Trading controls (start, pause, stop all trading)
 - ⚙️ Broker settings: add, edit, remove, and locally save disconnected IBKR configurations
@@ -53,6 +55,7 @@ npm run dev
 - `OrdersTable` - Orders history table
 - `AIDecisionsTable` - AI decisions with reasoning, scores, outcomes, and paper approval controls
 - `AIExecutionSettings` - Paper-only AI model and execution-policy settings
+- `MarketIntelligencePanel` - Provider health, watchlists, scanner results, and AI market context
 - `RiskDashboard` - Risk guardrails monitoring
 - `TradingControls` - Start/pause/stop trading buttons
 
@@ -75,6 +78,11 @@ The frontend connects to the backend API:
 - `POST /ai/decisions/{id}/approve` - Manually approve one decision for guarded paper execution
 - `POST /ai/decisions/{id}/reject` - Record a manual rejection without execution
 - `GET/PATCH /ai/settings` - Read or update manual/automatic-paper AI settings
+- `GET /market/health` - Provider/caching health for market intelligence
+- `GET /market/context/{symbol}` - Cached chart, indicators, news sentiment, and economic context
+- `POST /market/scanner` - Scan supplied symbols or a saved watchlist
+- `GET/POST/PUT/DELETE /market/watchlists` - Local watchlist management
+- `POST /market/ai-decisions/{symbol}` - Feed collected market context into a paper-only AI decision
 - `POST /paper/start` - Start paper trading
 - `POST /paper/pause` - Pause paper trading
 - `POST /paper/stop-all` - Stop all trading (emergency)
@@ -86,6 +94,7 @@ The frontend connects to the backend API:
 - Live trading remains disabled in the frontend and backend
 - AI settings only allow manual approval or automatic **paper** execution; they never connect to a real broker
 - AI context and outcomes are stored locally for auditability; no real API keys or broker credentials are requested
+- Market intelligence uses no-key public providers with transparent local fallbacks; paid-provider support is an interface-level future swap
 - Broker settings display Disconnected, Paper Ready, and Live Locked states
 - All sensitive operations require user confirmation
 - Demo login is for testing only

@@ -157,6 +157,8 @@ class RuleBasedPaperModel:
         indicator_signal = _number(features.get('indicator_signal'))
         news_signal = _number(features.get('news_signal'))
         market_signal = _number(features.get('market_signal'))
+        economic_signal = _number(features.get('economic_signal'))
+        economic_risk = _number(features.get('economic_risk'))
         source_count = int(features.get('source_count', 0))
         volatility = _number(features.get('volatility'))
         price = _number(context.get('current_price'))
@@ -166,14 +168,20 @@ class RuleBasedPaperModel:
         current_position = _number(features.get('current_position_qty'))
 
         signal = _clamp(
-            chart_signal * 0.40 + indicator_signal * 0.25 + news_signal * 0.20 + market_signal * 0.15,
+            chart_signal * 0.35 + indicator_signal * 0.25 + news_signal * 0.20
+            + market_signal * 0.10 + economic_signal * 0.10,
             -1.0,
             1.0,
         )
         strength = abs(signal)
         confidence = _clamp(32.0 + source_count * 11.0 + strength * 25.0, 0.0, 100.0)
         portfolio_exposure = _clamp(abs(current_position * price) / max(equity, 1.0), 0.0, 1.0)
-        risk = _clamp(volatility * 100.0 * 2.0 + portfolio_exposure * 35.0 + (100.0 - confidence) * 0.18, 0.0, 100.0)
+        risk = _clamp(
+            volatility * 100.0 * 2.0 + portfolio_exposure * 35.0
+            + economic_risk * 100.0 + (100.0 - confidence) * 0.18,
+            0.0,
+            100.0,
+        )
         opportunity = _clamp(50.0 + signal * 50.0, 0.0, 100.0)
 
         if signal >= 0.18 and confidence >= 55.0 and price > 0 and cash >= price:
@@ -188,7 +196,7 @@ class RuleBasedPaperModel:
 
         reasoning = [
             f"Model {self.key} combined supplied chart, indicator, news, and market signals into {signal:+.2f}.",
-            f"Chart signal {chart_signal:+.2f}; indicator signal {indicator_signal:+.2f}; news signal {news_signal:+.2f}; market signal {market_signal:+.2f}.",
+            f"Chart signal {chart_signal:+.2f}; indicator signal {indicator_signal:+.2f}; news signal {news_signal:+.2f}; market signal {market_signal:+.2f}; economic signal {economic_signal:+.2f}.",
             f"Confidence is {confidence:.1f}% from {source_count} available data source(s); estimated risk is {risk:.1f}%.",
         ]
         if action == 'BUY':
@@ -266,6 +274,8 @@ class AIDecisionEngine:
         market_signal = _clamp((current_price / opening_price - 1.0) * 15.0, -1.0, 1.0) if opening_price else 0.0
         news_scores = [score for score in (_score_news_item(item) for item in (news or [])) if score is not None]
         news_signal = _mean(news_scores) or 0.0
+        economic_signal = _clamp(_number(market.get('economic_signal')), -1.0, 1.0)
+        economic_risk = _clamp(_number(market.get('economic_risk')), 0.0, 1.0)
         positions = list((portfolio_state or {}).get('positions') or [])
         current_position = next(
             (_number(position.get('qty')) for position in positions if position.get('symbol') == symbol),
@@ -280,6 +290,7 @@ class AIDecisionEngine:
             charts['close_count'] >= 2,
             bool(supplied_indicators),
             bool(news_scores),
+            bool(market.get('economic_events')),
             bool(portfolio_state),
         ])
         features = {
@@ -287,6 +298,8 @@ class AIDecisionEngine:
             'indicator_signal': round(indicator_signal, 4),
             'news_signal': round(news_signal, 4),
             'market_signal': round(market_signal, 4),
+            'economic_signal': round(economic_signal, 4),
+            'economic_risk': round(economic_risk, 4),
             'volatility': round(_clamp(volatility, 0.0, 1.0), 4),
             'source_count': source_count,
             'current_position_qty': current_position,
