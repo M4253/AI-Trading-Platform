@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.trading_engine.execution_engine import execute_trade_request
 from backend.portfolio.portfolio import get_portfolio_view
@@ -11,6 +12,15 @@ app = FastAPI(
     title="AI Trading Platform",
     description="Production AI trading platform with Decision Engine, Risk Management, and Paper Trading",
     version="1.0.0"
+)
+
+# Enable CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to specific domains
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include routers
