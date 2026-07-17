@@ -28,3 +28,9 @@ def test_trade_execute_and_portfolio_and_orders_and_cancel():
     resp4 = client.post('/orders/cancel', json={'order_id': order_id})
     assert resp4.status_code == 404
 
+
+def test_health():
+    resp = client.get('/health')
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get('status') in ('ok', 'healthy')

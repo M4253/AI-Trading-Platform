@@ -7,6 +7,11 @@ from backend.db.db import list_orders, cancel_order
 app = FastAPI()
 
 
+@app.get('/health')
+def health():
+    return {"status": "ok"}
+
+
 class TradeRequest(BaseModel):
     symbol: str
     qty: float
