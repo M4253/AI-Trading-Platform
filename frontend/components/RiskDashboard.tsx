@@ -23,8 +23,8 @@ export default function RiskDashboard() {
           <p className="text-xs text-gray-500 mt-1">Status: ✓ OK</p>
         </div>
       </div>
-      <div className="mt-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded">
-        ✓ All guardrails are within safe limits. Trading is active.
+      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded">
+        Paper-only guardrails are enforced by the backend. Trading stays stopped until you explicitly start paper trading.
       </div>
     </div>
   )

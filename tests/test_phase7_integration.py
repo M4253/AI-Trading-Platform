@@ -1,8 +1,6 @@
 """Phase 7 - Web Dashboard integration tests."""
 import pytest
 from fastapi.testclient import TestClient
-import sys
-sys.path.insert(0, '/Users/hamda/Documents/AI-Trading-Platform')
 
 from backend.main import app
 
@@ -82,7 +80,10 @@ def test_ai_decisions_endpoint():
 
 
 def test_cors_headers_for_frontend():
-    """Test CORS headers are set for frontend."""
-    response = client.get('/health')
+    """Only the local dashboard origin is granted CORS access."""
+    response = client.options('/health', headers={
+        'Origin': 'http://localhost:3000',
+        'Access-Control-Request-Method': 'GET',
+    })
     assert response.status_code == 200
-    # CORS headers should allow frontend requests
+    assert response.headers['access-control-allow-origin'] == 'http://localhost:3000'

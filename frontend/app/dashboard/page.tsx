@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [aiDecisions, setAiDecisions] = useState<any[]>([])
   const [error, setError] = useState('')
   const [tradingStatus, setTradingStatus] = useState('stopped')
+  const [user, setUser] = useState<string | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -31,6 +32,7 @@ export default function DashboardPage() {
       router.push('/login')
       return
     }
+    setUser(localStorage.getItem('user'))
     loadData()
   }, [])
 
@@ -98,7 +100,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <Layout user={localStorage.getItem('user')} onRefresh={handleRefresh}>
+    <Layout user={user} onRefresh={handleRefresh}>
       <div className="space-y-6">
         {/* Trading Controls */}
         <TradingControls

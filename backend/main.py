@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,11 +15,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for frontend
+# Permit the local dashboard explicitly.  The demo uses bearer tokens rather
+# than cookies, so credentialed wildcard CORS is neither needed nor safe.
+frontend_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOW_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000',
+    ).split(',')
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to specific domains
-    allow_credentials=True,
+    allow_origins=frontend_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -14,13 +14,13 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // Simulated login - in production this would authenticate against a real auth backend
-      if (email && password) {
+      // Deliberately limited local demo access; this is not production authentication.
+      if (email === 'demo@example.com' && password === 'demo') {
         localStorage.setItem('token', 'demo-token-' + Date.now())
         localStorage.setItem('user', email)
         window.location.href = '/dashboard'
       } else {
-        setError('Email and password are required')
+        setError('Use the displayed demo credentials')
       }
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -34,7 +34,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">AI Trading Platform</h1>
-          <p className="text-gray-600">Paper Trading Dashboard</p>
+          <p className="text-gray-600">Paper Trading Dashboard — Local Demo Access</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">

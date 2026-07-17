@@ -1,32 +1,26 @@
 'use client'
 
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useEffect, useState } from 'react'
 import Layout from '@/components/Layout'
 
 export default function BrokerSettingsPage() {
-  const router = useRouter()
   const [host, setHost] = useState('127.0.0.1')
   const [port, setPort] = useState('7497')
   const [clientId, setClientId] = useState('1')
   const [accountId, setAccountId] = useState('')
-  const [accountType, setAccountType] = useState('paper')
-  const [testingConnection, setTestingConnection] = useState(false)
   const [message, setMessage] = useState('')
+  const [user, setUser] = useState<string | null>(null)
+
+  useEffect(() => {
+    setUser(localStorage.getItem('user'))
+  }, [])
 
   const handleTestConnection = async () => {
-    setTestingConnection(true)
-    setMessage('Testing connection...')
-    
-    // Simulated test - in production this would actually test the connection
-    setTimeout(() => {
-      setMessage('❌ Not connected - IBKR is not currently connected to this platform')
-      setTestingConnection(false)
-    }, 1000)
+    setMessage('Connection testing is disabled. No request was sent to IBKR.')
   }
 
   const handleSave = () => {
-    setMessage('⚠️ Broker settings are stored locally for configuration only. Live trading is disabled.')
+    setMessage('⚠️ Settings are display-only while broker integration is disabled. Nothing was saved or sent.')
   }
 
   const handleDisconnect = () => {
@@ -34,7 +28,7 @@ export default function BrokerSettingsPage() {
   }
 
   return (
-    <Layout user={localStorage.getItem('user')}>
+    <Layout user={user}>
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Broker Settings</h1>
@@ -50,10 +44,10 @@ export default function BrokerSettingsPage() {
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="font-semibold text-blue-900 mb-2">⚠️ Important Security Notice</p>
             <ul className="text-sm text-blue-800 space-y-1 ml-4 list-disc">
-              <li>Credentials are never stored in plaintext or committed to Git</li>
-              <li>Live trading is permanently disabled until Phase 8 verification</li>
+              <li>No broker credentials are requested, stored, or sent by this page</li>
+              <li>Live trading is disabled; real IBKR verification has not occurred</li>
               <li>Paper trading is the default and only active mode</li>
-              <li>Connection credentials are stored securely in your local environment</li>
+              <li>IBKR remains disconnected regardless of the values shown below</li>
             </ul>
           </div>
 
@@ -84,7 +78,7 @@ export default function BrokerSettingsPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   placeholder="7497"
                 />
-                <p className="text-xs text-gray-500 mt-1">Default: 7497 (paper), 7496 (live)</p>
+                <p className="text-xs text-gray-500 mt-1">Default paper port: 7497</p>
               </div>
             </div>
 
@@ -118,27 +112,16 @@ export default function BrokerSettingsPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Account Type
-              </label>
-              <select
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="paper">Paper Trading (Recommended)</option>
-                <option value="live">Live Trading (Disabled)</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">Paper trading is the default and recommended mode</p>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="font-medium text-blue-900">Account Type: Paper Trading Only</p>
+              <p className="mt-1 text-xs text-blue-800">Live account selection is intentionally unavailable.</p>
             </div>
 
             <div className="border-t pt-4 mt-4">
               <p className="text-sm text-gray-600 mb-3 font-semibold">Connection Settings Information</p>
               <ul className="text-sm text-gray-600 space-y-1 ml-4 list-disc">
                 <li><strong>Host:</strong> IP address where TWS or IB Gateway is running</li>
-                <li><strong>Port 7497:</strong> Paper trading port (read-only simulation)</li>
-                <li><strong>Port 7496:</strong> Live trading port (real orders - currently disabled)</li>
+                <li><strong>Port 7497:</strong> Common IBKR paper port; this application will not connect to it</li>
                 <li><strong>Client ID:</strong> Unique ID for this application (1-2147483647)</li>
                 <li><strong>Account ID:</strong> Found in TWS Account window, e.g., DU1234567 or U1234567</li>
               </ul>
@@ -161,19 +144,21 @@ export default function BrokerSettingsPage() {
           {/* Action Buttons */}
           <div className="flex gap-3 mt-6">
             <button
+              type="button"
               onClick={handleTestConnection}
-              disabled={testingConnection}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
             >
-              {testingConnection ? 'Testing...' : 'Test Connection'}
+              Test Connection
             </button>
             <button
+              type="button"
               onClick={handleSave}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition"
             >
               Save Settings
             </button>
             <button
+              type="button"
               onClick={handleDisconnect}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition"
             >
@@ -183,8 +168,8 @@ export default function BrokerSettingsPage() {
 
           {/* Footer Note */}
           <div className="mt-8 pt-6 border-t text-xs text-gray-500">
-            <p><strong>Security:</strong> This page does not send any real credentials over the network. All settings are stored locally.</p>
-            <p className="mt-2"><strong>Live Trading:</strong> Remains permanently disabled. Phase 8 verification and a separate go-live gate are required before live orders can be placed.</p>
+            <p><strong>Security:</strong> This page does not send real credentials or initiate a broker connection.</p>
+            <p className="mt-2"><strong>Live Trading:</strong> Disabled. No real IBKR verification has been performed.</p>
           </div>
         </div>
       </div>
