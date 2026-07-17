@@ -11,6 +11,7 @@ import PositionsTable from '@/components/PositionsTable'
 import OrdersTable from '@/components/OrdersTable'
 import RiskDashboard from '@/components/RiskDashboard'
 import AIDecisionsTable from '@/components/AIDecisionsTable'
+import AIExecutionSettings from '@/components/AIExecutionSettings'
 import TradingControls from '@/components/TradingControls'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [tradingStatus, setTradingStatus] = useState('stopped')
   const [user, setUser] = useState<string | null>(null)
+  const [updatingDecisionId, setUpdatingDecisionId] = useState<string | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -99,6 +101,33 @@ export default function DashboardPage() {
     }
   }
 
+  const handleApproveDecision = async (decisionId: string) => {
+    try {
+      setUpdatingDecisionId(decisionId)
+      setError('')
+      await axios.post(`${BACKEND_URL}/ai/decisions/${decisionId}/approve`)
+      await loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Unable to approve the paper decision')
+    } finally {
+      setUpdatingDecisionId(null)
+    }
+  }
+
+  const handleRejectDecision = async (decisionId: string) => {
+    if (!window.confirm('Reject this AI decision without placing a paper order?')) return
+    try {
+      setUpdatingDecisionId(decisionId)
+      setError('')
+      await axios.post(`${BACKEND_URL}/ai/decisions/${decisionId}/reject`, { reason: 'Rejected from dashboard' })
+      await loadData()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Unable to reject the AI decision')
+    } finally {
+      setUpdatingDecisionId(null)
+    }
+  }
+
   return (
     <Layout user={user} onRefresh={handleRefresh}>
       <div className="space-y-6">
@@ -109,6 +138,8 @@ export default function DashboardPage() {
           onPause={handlePauseTrading}
           onStop={handleStopAllTrading}
         />
+
+        <AIExecutionSettings onChanged={handleRefresh} />
 
         {/* Error Alert */}
         {error && (
@@ -188,7 +219,12 @@ export default function DashboardPage() {
               {aiDecisions.length === 0 ? (
                 <p className="text-gray-500">No AI decisions yet</p>
               ) : (
-                <AIDecisionsTable decisions={aiDecisions} />
+                <AIDecisionsTable
+                  decisions={aiDecisions}
+                  onApprove={handleApproveDecision}
+                  onReject={handleRejectDecision}
+                  updatingDecisionId={updatingDecisionId}
+                />
               )}
             </div>
           </>

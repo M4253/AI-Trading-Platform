@@ -9,7 +9,9 @@ Next.js web dashboard for the AI Trading Platform paper trading engine.
 - 📈 Equity curve and drawdown charts
 - 💼 Open positions display
 - 📋 Orders and trades history
-- 🤖 AI trading decisions with confidence, opportunity, and risk scores
+- 🤖 Auditable AI decisions that analyze supplied charts, indicators, news, market data, and paper portfolio state
+- 🧠 AI reasoning, confidence, execution outcome, and manual paper-approval controls in the dashboard
+- 🧪 Selectable local AI model policy with manual approval by default and automatic paper execution as the only automatic option
 - ⚠️ Risk monitoring dashboard with guardrail status
 - 🎮 Trading controls (start, pause, stop all trading)
 - ⚙️ Broker settings: add, edit, remove, and locally save disconnected IBKR configurations
@@ -49,7 +51,8 @@ npm run dev
 - `DrawdownChart` - Drawdown history chart
 - `PositionsTable` - Open positions table
 - `OrdersTable` - Orders history table
-- `AIDecisionsTable` - AI decisions with scores
+- `AIDecisionsTable` - AI decisions with reasoning, scores, outcomes, and paper approval controls
+- `AIExecutionSettings` - Paper-only AI model and execution-policy settings
 - `RiskDashboard` - Risk guardrails monitoring
 - `TradingControls` - Start/pause/stop trading buttons
 
@@ -68,6 +71,10 @@ The frontend connects to the backend API:
 - `GET /paper/positions` - Current positions
 - `GET /paper/orders` - Orders history
 - `GET /ai/decisions` - AI trading decisions
+- `POST /ai/decisions` - Analyze and persist a decision under the saved paper-only policy
+- `POST /ai/decisions/{id}/approve` - Manually approve one decision for guarded paper execution
+- `POST /ai/decisions/{id}/reject` - Record a manual rejection without execution
+- `GET/PATCH /ai/settings` - Read or update manual/automatic-paper AI settings
 - `POST /paper/start` - Start paper trading
 - `POST /paper/pause` - Pause paper trading
 - `POST /paper/stop-all` - Stop all trading (emergency)
@@ -77,6 +84,8 @@ The frontend connects to the backend API:
 - No real IBKR credentials are requested, stored, or displayed
 - Broker metadata is stored locally with restricted file permissions where supported
 - Live trading remains disabled in the frontend and backend
+- AI settings only allow manual approval or automatic **paper** execution; they never connect to a real broker
+- AI context and outcomes are stored locally for auditability; no real API keys or broker credentials are requested
 - Broker settings display Disconnected, Paper Ready, and Live Locked states
 - All sensitive operations require user confirmation
 - Demo login is for testing only
