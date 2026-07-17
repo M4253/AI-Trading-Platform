@@ -5,16 +5,18 @@ from backend.portfolio.portfolio import get_portfolio_view
 from backend.db.db import list_orders, cancel_order
 from backend.backtesting.routes import router as backtest_router
 from backend.ai_models.routes import router as ai_router
+from backend.paper_trading.routes import router as paper_router
 
 app = FastAPI(
     title="AI Trading Platform",
-    description="Production AI trading platform with Decision Engine and Risk Management",
+    description="Production AI trading platform with Decision Engine, Risk Management, and Paper Trading",
     version="1.0.0"
 )
 
 # Include routers
 app.include_router(backtest_router)
 app.include_router(ai_router)
+app.include_router(paper_router)
 
 
 class TradeRequest(BaseModel):
