@@ -28,6 +28,9 @@ export default function DashboardPage() {
   const [updatingDecisionId, setUpdatingDecisionId] = useState<string | null>(null)
 
   useEffect(() => {
+    // Effects are browser-only, and this guard keeps browser storage outside
+    // the server-rendered component path if this setup changes in the future.
+    if (typeof window === 'undefined') return
     const token = getSessionValue('token')
     if (!token) {
       router.push('/login')
