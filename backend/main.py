@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.trading_engine.execution_engine import execute_trade_request
 from backend.portfolio.portfolio import get_portfolio_view
-from backend.db.db import list_orders, cancel_order
+from backend.paper_trading.paper_db import get_paper_orders, cancel_paper_order
 from backend.backtesting.routes import router as backtest_router
 from backend.ai_models.routes import router as ai_router
 from backend.paper_trading.routes import router as paper_router
@@ -59,12 +59,12 @@ def portfolio():
 
 @app.get('/orders')
 def get_orders():
-    return list_orders()
+    return get_paper_orders()
 
 
 @app.post('/orders/cancel')
 def post_cancel(req: CancelRequest):
-    success = cancel_order(req.order_id)
+    success = cancel_paper_order(req.order_id)
     if not success:
         raise HTTPException(status_code=404, detail='Order not found or cannot be cancelled')
     return {'status': 'cancelled', 'order_id': req.order_id}

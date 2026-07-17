@@ -5,6 +5,10 @@ client = TestClient(app)
 
 
 def test_trade_execute_and_portfolio_and_orders_and_cancel():
+    # The default account is intentionally stopped until paper trading starts.
+    start = client.post('/paper/start')
+    assert start.status_code == 200
+
     # Execute a buy trade
     resp = client.post('/trade/execute', json={'symbol': 'AAPL', 'qty': 1, 'side': 'buy'})
     assert resp.status_code == 200

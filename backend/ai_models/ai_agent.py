@@ -333,7 +333,7 @@ class AIAgent:
                 'ai_decision_id': decision_id
             }
             
-            execution_result = decide_and_execute(decision_signal)
+            execution_result = decide_and_execute(decision_signal, db_path=self.db_path)
             
             if execution_result and 'order' in execution_result:
                 result['final_execution'] = execution_result
@@ -346,11 +346,13 @@ class AIAgent:
                 update_ai_decision_status(decision_id, 'approved', 'executed', order_id, self.db_path)
             else:
                 result['rejected'] = True
-                result['rejection_reason'] = 'Decision engine returned no execution'
+                result['rejection_reason'] = execution_result.get(
+                    'reason', 'Decision engine returned no execution'
+                ) if execution_result else 'Decision engine returned no execution'
                 result['audit_trail'].append({
                     'stage': 'decision_engine',
                     'passed': False,
-                    'reason': 'Engine rejected proposal'
+                    'reason': result['rejection_reason']
                 })
                 update_ai_decision_status(decision_id, 'rejected_by_engine', 'cancelled', None, self.db_path)
 
@@ -365,4 +367,3 @@ class AIAgent:
             update_ai_decision_status(decision_id, 'error', 'failed', None, self.db_path)
 
         return result
-

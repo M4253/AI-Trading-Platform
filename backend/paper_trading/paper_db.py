@@ -101,7 +101,7 @@ PAPER_TABLES_SQL = [
 ]
 
 
-def init_paper_db(db_path: Optional[str] = None):
+def init_paper_db(db_path: Optional[str] = None, initial_cash: float = 100000.0):
     """Initialize paper trading tables."""
     conn = get_conn(db_path)
     with DB_LOCK:
@@ -111,7 +111,7 @@ def init_paper_db(db_path: Optional[str] = None):
         # Initialize portfolio
         cur.execute(
             "INSERT OR IGNORE INTO paper_portfolio (id, initial_cash, current_cash, total_equity, equity_high_water_mark, total_realised_pnl, total_unrealised_pnl, commission_costs, slippage_costs, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), 100000.0, 100000.0, 100000.0, 100000.0, 0.0, 0.0, 0.0, 0.0, datetime.utcnow().isoformat())
+            (str(uuid.uuid4()), initial_cash, initial_cash, initial_cash, initial_cash, 0.0, 0.0, 0.0, 0.0, datetime.utcnow().isoformat())
         )
         # Initialize trading state
         cur.execute("INSERT OR IGNORE INTO paper_trading_state (key, value, updated_at) VALUES (?, ?, ?)",
@@ -182,6 +182,15 @@ def get_paper_positions(db_path: Optional[str] = None) -> List[Dict]:
     return [dict(row) for row in cur.fetchall()]
 
 
+def get_paper_position(symbol: str, db_path: Optional[str] = None) -> Optional[Dict]:
+    """Return one open paper position, if present."""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM paper_positions WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
 def get_paper_portfolio(db_path: Optional[str] = None) -> Optional[Dict]:
     """Get portfolio summary."""
     conn = get_conn(db_path)
@@ -213,6 +222,120 @@ def update_paper_portfolio(updates: Dict, db_path: Optional[str] = None):
         query = f"UPDATE paper_portfolio SET {', '.join(update_fields)} WHERE id = ?"
         conn.execute(query, values)
         conn.commit()
+
+
+def apply_paper_fill(symbol: str, qty: float, side: str, fill_price: float,
+                     commission: float, slippage: float,
+                     db_path: Optional[str] = None) -> Dict:
+    """Atomically apply a filled long-only paper order to positions and equity.
+
+    The simulated account never borrows or opens a short position.  The caller
+    validates available cash/quantity before invoking this function.
+    """
+    now = datetime.utcnow().isoformat()
+    conn = get_conn(db_path)
+    with DB_LOCK:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM paper_portfolio LIMIT 1")
+        portfolio_row = cur.fetchone()
+        if not portfolio_row:
+            raise RuntimeError('Paper portfolio is not initialized')
+        portfolio = dict(portfolio_row)
+
+        cur.execute("SELECT * FROM paper_positions WHERE symbol = ?", (symbol,))
+        position_row = cur.fetchone()
+        position = dict(position_row) if position_row else None
+        realised_pnl = 0.0
+
+        if side.lower() == 'buy':
+            if position:
+                new_qty = position['qty'] + qty
+                avg_entry_price = (
+                    position['qty'] * position['avg_entry_price'] + qty * fill_price
+                ) / new_qty
+                cur.execute(
+                    """UPDATE paper_positions
+                       SET qty = ?, avg_entry_price = ?, current_price = ?,
+                           unrealised_pnl = ?, updated_at = ? WHERE symbol = ?""",
+                    (new_qty, avg_entry_price, fill_price,
+                     (fill_price - avg_entry_price) * new_qty, now, symbol),
+                )
+            else:
+                cur.execute(
+                    """INSERT INTO paper_positions
+                       (id, symbol, qty, avg_entry_price, current_price,
+                        unrealised_pnl, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (str(uuid.uuid4()), symbol, qty, fill_price, fill_price,
+                     0.0, now, now),
+                )
+            new_cash = portfolio['current_cash'] - (qty * fill_price + commission)
+        else:
+            if not position or position['qty'] < qty:
+                raise ValueError('Cannot sell more than the open paper position')
+            new_qty = position['qty'] - qty
+            realised_pnl = (fill_price - position['avg_entry_price']) * qty - commission
+            new_cash = portfolio['current_cash'] + (qty * fill_price - commission)
+            if new_qty == 0:
+                cur.execute("DELETE FROM paper_positions WHERE symbol = ?", (symbol,))
+            else:
+                cur.execute(
+                    """UPDATE paper_positions
+                       SET qty = ?, current_price = ?, unrealised_pnl = ?,
+                           updated_at = ? WHERE symbol = ?""",
+                    (new_qty, fill_price,
+                     (fill_price - position['avg_entry_price']) * new_qty, now, symbol),
+                )
+
+        cur.execute(
+            "SELECT COALESCE(SUM(qty * current_price), 0) AS positions_value, "
+            "COALESCE(SUM(unrealised_pnl), 0) AS unrealised_pnl FROM paper_positions"
+        )
+        totals = dict(cur.fetchone())
+        total_equity = new_cash + totals['positions_value']
+        high_water_mark = max(portfolio['equity_high_water_mark'], total_equity)
+        cur.execute(
+            """UPDATE paper_portfolio
+               SET current_cash = ?, total_equity = ?, equity_high_water_mark = ?,
+                   total_realised_pnl = ?, total_unrealised_pnl = ?,
+                   commission_costs = ?, slippage_costs = ?, updated_at = ?
+               WHERE id = ?""",
+            (new_cash, total_equity, high_water_mark,
+             portfolio['total_realised_pnl'] + realised_pnl,
+             totals['unrealised_pnl'],
+             portfolio['commission_costs'] + commission,
+             portfolio['slippage_costs'] + slippage,
+             now, portfolio['id']),
+        )
+        drawdown = (total_equity - high_water_mark) / high_water_mark if high_water_mark else 0.0
+        cur.execute(
+            """INSERT INTO paper_equity_snapshots
+               (id, timestamp, equity, cash, positions_value, drawdown)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (str(uuid.uuid4()), now, total_equity, new_cash,
+             totals['positions_value'], drawdown),
+        )
+        conn.commit()
+
+    return {
+        'current_cash': new_cash,
+        'total_equity': total_equity,
+        'realised_pnl': realised_pnl,
+        'unrealised_pnl': totals['unrealised_pnl'],
+    }
+
+
+def cancel_paper_order(order_id: str, db_path: Optional[str] = None) -> bool:
+    """Cancel only an order that is still pending."""
+    conn = get_conn(db_path)
+    with DB_LOCK:
+        cur = conn.execute(
+            "UPDATE paper_orders SET status = ?, updated_at = ? "
+            "WHERE id = ? AND status = ?",
+            ('cancelled', datetime.utcnow().isoformat(), order_id, 'pending'),
+        )
+        conn.commit()
+        return cur.rowcount == 1
 
 
 def insert_risk_event(event: Dict, db_path: Optional[str] = None):

@@ -1,4 +1,4 @@
-"""Main paper trading engine orchestrating AI → Risk → Execution."""
+"""Main paper trading engine for paper-only lifecycle, risk, and execution."""
 from typing import Dict, Optional
 from datetime import datetime
 from backend.paper_trading.paper_broker import PaperBroker
@@ -7,18 +7,16 @@ from backend.paper_trading.paper_db import (
     insert_risk_event, update_paper_portfolio
 )
 from backend.risk_engine.risk_manager import RiskManager
-from backend.ai_models.ai_agent import AIAgent
 import uuid
 
 
 class PaperTradingEngine:
-    """Orchestrates paper trading with AI, Risk, and Execution."""
+    """Orchestrates paper trading behind explicit lifecycle and risk gates."""
     
     def __init__(self, db_path: Optional[str] = None, initial_cash: float = 100000.0):
         self.db_path = db_path
         self.broker = PaperBroker(initial_cash=initial_cash, db_path=db_path)
         self.risk_manager = RiskManager()
-        self.ai_agent = AIAgent(db_path=db_path)
         self._trading_halted = False
         self._daily_loss = 0.0
         self._weekly_loss = 0.0
@@ -29,6 +27,9 @@ class PaperTradingEngine:
         """Start paper trading."""
         set_paper_trading_state('status', 'running', self.db_path)
         set_paper_trading_state('trading_halted', 'false', self.db_path)
+        portfolio = get_paper_portfolio(self.db_path)
+        if portfolio:
+            set_paper_trading_state('daily_starting_equity', str(portfolio['total_equity']), self.db_path)
         self._trading_halted = False
 
     def pause_trading(self):
@@ -41,6 +42,7 @@ class PaperTradingEngine:
 
     def stop_all_trading(self):
         """Emergency stop all trading."""
+        set_paper_trading_state('status', 'stopped', self.db_path)
         set_paper_trading_state('trading_halted', 'true', self.db_path)
         self._trading_halted = True
         insert_risk_event({
@@ -54,7 +56,7 @@ class PaperTradingEngine:
     def execute_trade(self, symbol: str, qty: float, side: str,
                       market_data: Dict, portfolio_state: Dict,
                       market_regime: str = 'neutral') -> Dict:
-        """Execute trade through full pipeline: AI → Risk → Execution."""
+        """Execute an approved paper order through lifecycle and risk checks."""
         correlation_id = str(uuid.uuid4())
         
         # Check if trading is halted
@@ -64,12 +66,13 @@ class PaperTradingEngine:
                 'reason': 'Trading halted by emergency stop',
                 'correlation_id': correlation_id
             }
-        
-        # AI Analysis
-        analysis = self.ai_agent.analyze_opportunity(
-            symbol, market_data.get('close', 100.0), market_data,
-            portfolio_state, market_regime
-        )
+
+        if get_paper_trading_state('status', self.db_path) != 'running':
+            return {
+                'rejected': True,
+                'reason': 'Paper trading is not running',
+                'correlation_id': correlation_id,
+            }
         
         # Risk Validation
         if not self.risk_manager.validate_order(portfolio_state, 
@@ -94,6 +97,12 @@ class PaperTradingEngine:
             result = self.broker.submit_market_order(
                 symbol, qty, side, market_data.get('close', 100.0), correlation_id
             )
+            if result.get('rejected'):
+                return {
+                    'rejected': True,
+                    'reason': result['reason'],
+                    'correlation_id': correlation_id,
+                }
             return {
                 'executed': True,
                 'order': result['order'],
@@ -130,16 +139,33 @@ class PaperTradingEngine:
                 'action_taken': 'halt_trading'
             }, self.db_path)
 
+        daily_starting_equity = float(
+            get_paper_trading_state('daily_starting_equity', self.db_path)
+            or portfolio['initial_cash']
+        )
+        daily_loss = portfolio['total_equity'] - daily_starting_equity
+        if daily_loss <= self.daily_loss_limit:
+            self.stop_all_trading()
+            insert_risk_event({
+                'event_type': 'guardrail_breach',
+                'severity': 'critical',
+                'description': 'Maximum daily paper loss exceeded',
+                'guardrail_name': 'max_daily_loss',
+                'current_value': daily_loss,
+                'threshold': self.daily_loss_limit,
+                'action_taken': 'halt_trading',
+            }, self.db_path)
+
     def update_portfolio_metrics(self):
         """Update portfolio equity, P&L, and drawdown."""
         portfolio = get_paper_portfolio(self.db_path)
         if not portfolio:
             return
         
-        # Calculate total equity from positions + cash
-        total_equity = portfolio['current_cash']
+        # Fills update equity atomically.  This method remains a safe hook for
+        # callers that want to re-run guardrails after a market-data refresh.
+        total_equity = portfolio['total_equity']
         update_paper_portfolio({
             'total_equity': total_equity,
-            'total_unrealised_pnl': 0.0  # Would sum positions here
+            'total_unrealised_pnl': portfolio['total_unrealised_pnl'],
         }, self.db_path)
-

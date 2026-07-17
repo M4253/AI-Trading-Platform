@@ -3,7 +3,10 @@ import pytest
 import tempfile
 from backend.paper_trading.paper_broker import PaperBroker
 from backend.paper_trading.paper_engine import PaperTradingEngine
-from backend.paper_trading.paper_db import init_paper_db, get_paper_portfolio, get_paper_orders
+from backend.paper_trading.paper_db import (
+    init_paper_db, get_paper_portfolio, get_paper_orders, get_paper_positions,
+    get_paper_trading_state,
+)
 import os
 
 
@@ -80,7 +83,25 @@ def test_cancel_order(paper_broker):
 def test_paper_engine_start_trading(paper_engine):
     """Test starting paper trading."""
     paper_engine.start_trading()
-    # Should not raise
+    assert get_paper_trading_state('status', paper_engine.db_path) == 'running'
+
+
+def test_stopped_paper_engine_blocks_orders(paper_engine):
+    result = paper_engine.execute_trade(
+        'AAPL', 1, 'buy', {'close': 150.0}, {'total_equity': 100000.0}
+    )
+    assert result['rejected'] is True
+    assert result['reason'] == 'Paper trading is not running'
+
+
+def test_paused_paper_engine_blocks_orders(paper_engine):
+    paper_engine.start_trading()
+    paper_engine.pause_trading()
+    result = paper_engine.execute_trade(
+        'AAPL', 1, 'buy', {'close': 150.0}, {'total_equity': 100000.0}
+    )
+    assert result['rejected'] is True
+    assert result['reason'] == 'Paper trading is not running'
 
 
 def test_paper_engine_stop_all_trading(paper_engine):
@@ -97,6 +118,7 @@ def test_paper_engine_stop_all_trading(paper_engine):
 
 def test_execute_trade_through_pipeline(paper_engine):
     """Test full trade execution pipeline."""
+    paper_engine.start_trading()
     portfolio = get_paper_portfolio(paper_engine.db_path)
     result = paper_engine.execute_trade(
         'AAPL', 10, 'buy',
@@ -109,6 +131,7 @@ def test_execute_trade_through_pipeline(paper_engine):
 
 def test_risk_validation_blocks_large_order(paper_engine):
     """Test risk manager rejects oversized orders."""
+    paper_engine.start_trading()
     portfolio = get_paper_portfolio(paper_engine.db_path)
     # Try to buy way too much (should be blocked)
     result = paper_engine.execute_trade(
@@ -134,6 +157,7 @@ def test_portfolio_metrics_update(paper_engine):
 
 def test_orders_persisted(paper_engine, temp_db):
     """Test orders are persisted to database."""
+    paper_engine.start_trading()
     paper_engine.execute_trade(
         'TEST', 5, 'buy',
         {'close': 100.0},
@@ -142,3 +166,17 @@ def test_orders_persisted(paper_engine, temp_db):
     orders = get_paper_orders(db_path=temp_db)
     assert len(orders) > 0
 
+
+def test_filled_order_updates_position_and_portfolio(paper_engine):
+    paper_engine.start_trading()
+    result = paper_engine.execute_trade(
+        'AAPL', 10, 'buy', {'close': 150.0}, {'total_equity': 100000.0}
+    )
+
+    assert result['executed'] is True
+    positions = get_paper_positions(paper_engine.db_path)
+    portfolio = get_paper_portfolio(paper_engine.db_path)
+    assert positions[0]['symbol'] == 'AAPL'
+    assert positions[0]['qty'] == 10
+    assert portfolio['current_cash'] < portfolio['initial_cash']
+    assert portfolio['total_equity'] <= portfolio['initial_cash']
